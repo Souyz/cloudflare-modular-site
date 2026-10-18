@@ -1,0 +1,596 @@
+:root {
+  color-scheme: dark;
+  --bg: #091321;
+  --panel: rgba(13, 27, 43, 0.96);
+  --panel-strong: #08111f;
+  --text: #fff8d8;
+  --muted: #bed0df;
+  --accent: #ffcf33;
+  --accent-2: #5be7ff;
+  --danger: #ff5d73;
+  --shadow: 0 16px 42px rgba(0, 0, 0, 0.34);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+body {
+  overflow-x: hidden;
+  color: var(--text);
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(rgba(91, 231, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(91, 231, 255, 0.06) 1px, transparent 1px);
+  background-size: 48px 48px;
+  font-family: "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+
+button,
+a {
+  font: inherit;
+}
+
+.redux-shell {
+  width: min(1440px, 100%);
+  min-height: 100svh;
+  margin: 0 auto;
+  padding: clamp(14px, 2.5vw, 32px);
+}
+
+.redux-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 380px);
+  gap: 18px;
+  align-items: stretch;
+  margin-bottom: 18px;
+}
+
+.redux-copy,
+.redux-card,
+.game-frame-shell {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.redux-copy {
+  position: relative;
+  overflow: hidden;
+  min-height: 220px;
+  padding: clamp(22px, 4vw, 46px);
+  border-radius: 8px;
+}
+
+.redux-copy::after {
+  content: "";
+  position: absolute;
+  inset: auto -8% -44px auto;
+  width: min(42vw, 520px);
+  height: 150px;
+  border-radius: 8px 8px 0 0;
+  background:
+    linear-gradient(#6bd04b, #2b9d45 52%, #12724a 53%),
+    repeating-linear-gradient(90deg, transparent 0 44px, rgba(0, 0, 0, 0.18) 44px 48px);
+  box-shadow: inset 0 16px 0 rgba(255, 255, 255, 0.16);
+  opacity: 0.85;
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  color: var(--accent);
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  max-width: 780px;
+  font-size: clamp(42px, 9vw, 104px);
+  line-height: 0.9;
+  text-shadow: 0 6px 0 #1c2464, 0 16px 34px rgba(0, 0, 0, 0.35);
+}
+
+.lead {
+  max-width: 720px;
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: clamp(15px, 2vw, 20px);
+  line-height: 1.7;
+}
+
+.redux-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.primary-button,
+.secondary-button,
+.frame-toolbar button,
+.virtual-controls button {
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #10152f;
+  font-weight: 900;
+  text-decoration: none;
+  transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
+}
+
+.primary-button,
+.secondary-button {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 22px;
+}
+
+.primary-button {
+  background: linear-gradient(180deg, #ffe780, #ffb300);
+  box-shadow: 0 6px 0 #9a5b00, 0 12px 24px rgba(0, 0, 0, 0.24);
+}
+
+.secondary-button {
+  color: #e9faff;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+}
+
+.primary-button:hover,
+.secondary-button:hover,
+.frame-toolbar button:hover,
+.virtual-controls button:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.08);
+}
+
+.redux-card {
+  display: grid;
+  gap: 10px;
+  align-content: center;
+  padding: 24px;
+  border-radius: 8px;
+}
+
+.redux-card strong {
+  color: var(--accent-2);
+  font-size: 20px;
+}
+
+.redux-card span {
+  color: var(--muted);
+}
+
+.redux-card code {
+  color: var(--accent);
+}
+
+.prelaunch-panel {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(180px, 240px) minmax(180px, 260px) auto;
+  gap: 14px;
+  align-items: end;
+  margin-bottom: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(9, 14, 32, 0.72);
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+
+.prelaunch-panel h2,
+.prelaunch-panel p {
+  margin: 0;
+}
+
+.prelaunch-panel h2 {
+  font-size: clamp(22px, 3vw, 34px);
+}
+
+.prelaunch-panel p:not(.eyebrow) {
+  margin-top: 8px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.prelaunch-panel label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.prelaunch-panel select {
+  min-height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 14px;
+  color: #10152f;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 0 12px;
+  font: inherit;
+  font-weight: 800;
+}
+
+.designer-level-panel {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  border: 1px dashed rgba(91, 231, 255, 0.32);
+  border-radius: 8px;
+  background: rgba(91, 231, 255, 0.08);
+  padding: 12px 14px;
+  color: var(--muted);
+}
+
+.designer-level-panel strong {
+  color: var(--accent-2);
+}
+
+.designer-level-panel span {
+  flex: 1 1 360px;
+}
+
+.designer-level-panel .secondary-button {
+  min-height: 38px;
+  padding: 0 14px;
+}
+
+.designer-level-import {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.designer-level-import input {
+  display: none;
+}
+
+.game-frame-shell {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  min-height: 520px;
+  border-radius: 8px;
+  background: #050713;
+}
+
+body:not(.game-has-launched) .game-frame-shell {
+  display: none;
+}
+
+.godot-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #000;
+}
+
+.frame-toolbar {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  right: max(12px, env(safe-area-inset-right));
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  align-content: flex-start;
+  pointer-events: none;
+}
+
+.frame-toolbar span {
+  flex: 1 1 min(58vw, 620px);
+  min-width: 0;
+  max-width: min(58vw, 620px);
+  overflow: hidden;
+  padding: 9px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  color: #dbe7ff;
+  background: rgba(0, 0, 0, 0.48);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.frame-toolbar button {
+  min-height: 38px;
+  padding: 0 14px;
+  color: #081127;
+  background: rgba(255, 255, 255, 0.88);
+  pointer-events: auto;
+}
+
+.virtual-controls {
+  position: absolute;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  left: max(16px, env(safe-area-inset-left));
+  z-index: 5;
+  display: none;
+  justify-content: space-between;
+  align-items: end;
+  gap: 18px;
+  pointer-events: none;
+}
+
+body.has-touch-controls .virtual-controls {
+  display: flex;
+}
+
+.virtual-pad,
+.virtual-joystick,
+.virtual-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.virtual-pad {
+  align-items: end;
+}
+
+.virtual-joystick {
+  position: relative;
+  width: clamp(116px, 18vw, 164px);
+  height: clamp(116px, 18vw, 164px);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.22) 0 22%, transparent 23%),
+    radial-gradient(circle at 35% 25%, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.04) 46%),
+    rgba(14, 24, 56, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow: inset 0 -10px 18px rgba(0, 0, 0, 0.24), 0 12px 30px rgba(0, 0, 0, 0.32);
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.joystick-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 48%;
+  height: 48%;
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 25%, rgba(255, 255, 255, 0.56), rgba(91, 231, 255, 0.18) 48%), rgba(14, 24, 56, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  box-shadow: inset 0 -8px 0 rgba(0, 0, 0, 0.22), 0 10px 22px rgba(0, 0, 0, 0.28);
+  transform: translate(-50%, -50%);
+  transition: transform 0.08s ease;
+  pointer-events: none;
+}
+
+.virtual-joystick.is-active .joystick-knob {
+  transition: none;
+}
+
+.virtual-controls button {
+  width: clamp(58px, 8vw, 84px);
+  height: clamp(58px, 8vw, 84px);
+  color: #fff;
+  background: radial-gradient(circle at 35% 25%, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.05) 42%), rgba(14, 24, 56, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: inset 0 -8px 0 rgba(0, 0, 0, 0.22), 0 12px 30px rgba(0, 0, 0, 0.32);
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.virtual-actions button {
+  width: clamp(66px, 9vw, 96px);
+  background: radial-gradient(circle at 35% 25%, rgba(255, 255, 255, 0.44), rgba(255, 255, 255, 0.06) 42%), rgba(255, 87, 108, 0.84);
+}
+
+.virtual-actions button[data-action] {
+  position: fixed;
+  right: max(14px, env(safe-area-inset-right));
+  z-index: 10;
+  width: auto;
+  min-width: 72px;
+  height: 42px;
+  padding: 0 16px;
+  background: radial-gradient(circle at 35% 25%, rgba(255, 255, 255, 0.44), rgba(255, 255, 255, 0.06) 42%), rgba(91, 231, 255, 0.82);
+}
+
+.virtual-actions button[data-action="rescue"] {
+  top: max(14px, env(safe-area-inset-top));
+}
+
+.virtual-actions button[data-action="back"] {
+  top: calc(max(14px, env(safe-area-inset-top)) + 50px);
+  background: radial-gradient(circle at 35% 25%, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0.06) 42%), rgba(255, 207, 51, 0.88);
+  color: #15101f;
+}
+
+.virtual-controls button.is-pressed {
+  transform: translateY(4px) scale(0.96);
+  box-shadow: inset 0 5px 14px rgba(0, 0, 0, 0.34), 0 5px 16px rgba(0, 0, 0, 0.25);
+}
+
+@media (max-width: 900px) {
+  body {
+    overflow: hidden;
+  }
+
+  .redux-shell {
+    width: 100svw;
+    min-height: 100svh;
+    padding: 0;
+  }
+
+  .redux-hero {
+    display: none;
+  }
+
+  .prelaunch-panel {
+    position: fixed;
+    inset: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) auto max(12px, env(safe-area-inset-left));
+    z-index: 8;
+    grid-template-columns: 1fr;
+    max-height: calc(100svh - 24px);
+    overflow: auto;
+    align-items: stretch;
+    padding: 16px;
+    border-radius: 22px;
+    background: rgba(8, 11, 33, 0.94);
+  }
+
+  .game-frame-shell {
+    width: 100svw;
+    height: 100svh;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .virtual-controls {
+    gap: 10px;
+  }
+
+  .frame-toolbar {
+    gap: 6px;
+  }
+
+  .frame-toolbar span {
+    flex-basis: 42vw;
+    max-width: 46vw;
+    padding: 7px 9px;
+    font-size: 12px;
+  }
+
+  .frame-toolbar button {
+    min-height: 32px;
+    padding: 0 9px;
+    font-size: 12px;
+  }
+}
+
+body.game-has-launched .prelaunch-panel {
+  display: none;
+}
+
+body.is-forced-landscape .redux-shell {
+  width: 100svw;
+  height: 100svh;
+  padding: 0;
+}
+
+body.is-forced-landscape .redux-hero {
+  display: none;
+}
+
+body.is-forced-landscape .prelaunch-panel {
+  display: none;
+}
+
+body.is-forced-landscape .game-frame-shell {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 100svh;
+  height: 100svw;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  transform: translate(-50%, -50%) rotate(90deg);
+  transform-origin: center;
+}
+
+body.is-landscape-fullscreen .redux-shell {
+  width: 100vw;
+  height: 100vh;
+  padding: 0;
+}
+
+body.is-landscape-fullscreen .redux-hero,
+body.is-landscape-fullscreen .prelaunch-panel {
+  display: none;
+}
+
+body.is-landscape-fullscreen .game-frame-shell {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+body.is-landscape-fullscreen .frame-toolbar {
+  opacity: 0.22;
+  transition: opacity 0.15s ease;
+}
+
+body.is-landscape-fullscreen .frame-toolbar:hover,
+body.has-touch-controls.is-landscape-fullscreen .frame-toolbar {
+  opacity: 1;
+}
+
+body.is-forced-landscape.is-landscape-fullscreen .game-frame-shell {
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  width: 100svh;
+  height: 100svw;
+  transform: translate(-50%, -50%) rotate(90deg);
+  transform-origin: center;
+}
+
+@media (max-width: 900px) and (orientation: portrait) {
+  body.game-has-launched:not(.is-landscape-fullscreen) .game-frame-shell {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 100svh;
+    height: 100svw;
+    transform: translate(-50%, -50%) rotate(90deg);
+    transform-origin: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+  }
+}
+
+.launch-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}

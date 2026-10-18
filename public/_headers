@@ -1,0 +1,29 @@
+/site-assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/llrgamecubecity/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/llrgamecubecity/models/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+/llrgamecubecity/audio/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+/llrgamecubecity/fonts/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+/llrgamecubecity/textures/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+/llr-mariorun/godot/index.wasm.gz
+  Cache-Control: public, max-age=0, must-revalidate
+  Content-Type: application/wasm
+  Content-Encoding: gzip
+
+/llr-mariorun/godot/index.pck
+  Cache-Control: public, max-age=0, must-revalidate
+  Content-Type: application/octet-stream
+
+/*
+  X-Content-Type-Options: nosniff

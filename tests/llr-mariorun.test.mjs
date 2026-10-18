@@ -1,0 +1,686 @@
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import test from "node:test";
+import { brotliDecompressSync, gunzipSync } from "node:zlib";
+
+const root = new URL("../", import.meta.url);
+const source = (path) => readFileSync(new URL(path, root), "utf8");
+
+const wrangler = source("wrangler.jsonc");
+const worker = source("src/index.ts");
+const app = source("public/app.js");
+const styles = source("public/styles.css");
+const assetHeaders = source("public/_headers");
+
+function parseGodotPckEntryNames(path) {
+  const buffer = readFileSync(new URL(path, root));
+  assert.equal(buffer.toString("ascii", 0, 4), "GDPC");
+  let offset = 4 + 4 + 4 + 4 + 4 + 4 + 8 + 16 * 4;
+  const count = buffer.readUInt32LE(offset);
+  offset += 4;
+  const names = [];
+  for (let index = 0; index < count; index += 1) {
+    const nameLength = buffer.readUInt32LE(offset);
+    offset += 4;
+    names.push(buffer.toString("utf8", offset, offset + nameLength).replace(/\0+$/, ""));
+    offset += nameLength + 8 + 8 + 16 + 4;
+  }
+  return names;
+}
+
+test("llr-mariorun has D1 metadata and KV-backed Worker game APIs", () => {
+  assert.doesNotMatch(wrangler, /"r2_buckets"\s*:/);
+  assert.match(wrangler, /"d1_databases"\s*:/);
+  assert.match(wrangler, /"binding"\s*:\s*"GAME_DB"/);
+  assert.match(wrangler, /"run_worker_first"\s*:\s*\[[\s\S]*"\/llr-mariorun"/);
+  assert.doesNotMatch(wrangler, /"\/llr-mariorun\/\*"/);
+  assert.match(wrangler, /"\/llrgamecubecity\/assets\/\*"/);
+  assert.match(wrangler, /"\/llrgamecubecity\/audio\/\*"/);
+  assert.match(wrangler, /"\/llrgamecubecity\/fonts\/\*"/);
+  assert.match(wrangler, /"\/llrgamecubecity\/models\/\*"/);
+  assert.match(wrangler, /"\/llrgamecubecity\/textures\/\*"/);
+  assert.match(wrangler, /"\/llr-mariorun\/godot\/index\.pck"/);
+  assert.match(wrangler, /"\/llr-mariorun\/godot\/index\.wasm"/);
+  assert.match(worker, /GAME_ASSETS\?: R2Bucket/);
+  assert.match(worker, /GAME_DB\?: D1Database/);
+  assert.match(worker, /const gameAssetPacksKey = "game:asset-packs"/);
+  assert.match(worker, /const gameLevelsKey = "game:levels"/);
+  assert.match(worker, /const gameAssetKvPrefix = "game-assets-kv\/"/);
+  assert.match(worker, /const gameAssetR2Prefix = "game-assets\/"/);
+  assert.match(worker, /const llrMarioRunPath = "\/llr-mariorun"/);
+  assert.match(worker, /function defaultLlrMarioRunLink\(\)/);
+  assert.match(worker, /async function fetchGameManifest\(request: Request, env: AppEnv\)/);
+  assert.match(worker, /async function writeGameAssetPacks\(env: AppEnv, packs: GameAssetPack\[\]\)/);
+  assert.match(worker, /async function writeGameLevels\(env: AppEnv, levels: GameLevel\[\]\)/);
+  assert.match(worker, /SELECT payload FROM game_asset_packs/);
+  assert.match(worker, /INSERT INTO game_levels/);
+  assert.match(worker, /assetSlots: gameAssetSlots/);
+  assert.match(worker, /async function handleAdminGame\(request: Request, env: AppEnv\)/);
+  assert.match(worker, /async function handleGameAssetUpload\(request: Request, env: AppEnv\)/);
+  assert.match(worker, /async function fetchGameAsset\(request: Request, env: AppEnv, key: string\)/);
+  assert.match(worker, /async function fetchGodotGamePack\(request: Request, env: AppEnv, ctx: ExecutionContext\)/);
+  assert.match(worker, /function patchSm63ExtrasIntoPck\(targetBuffer: ArrayBuffer, sourceBuffer: ArrayBuffer\)/);
+  assert.match(worker, /const sm63ExtrasPckEntries = \[/);
+  assert.match(worker, /res:\/\/classes\/zone\/trigger\/death_plane\/death_plane\.gdc/);
+  assert.ok(worker.includes("/-llr_complete_(?:[1-9]|10)\\.scn$/"));
+  assert.match(worker, /Expected 10 compiled SM63 Extras scenes/);
+  assert.match(worker, /const compiledSupportScenes = source\.entries/);
+  assert.match(worker, /Expected 7 compiled SM63 support scenes/);
+  for (const mechanic of ["llr_spring", "llr_conveyor", "llr_pound_gate", "llr_coin_gate", "llr_shuttle", "llr_objective_target"]) {
+    assert.match(worker, new RegExp(`res://classes/solid/${mechanic}/${mechanic}\\.gdc`));
+  }
+  assert.match(worker, /res:\/\/classes\/zone\/llr_set_piece_director\/llr_set_piece_director\.gdc/);
+  assert.match(worker, /res:\/\/classes\/water\/water_viewport\.gd\.remap/);
+  assert.match(worker, /res:\/\/classes\/water\/water_viewport\.gdc/);
+  assert.match(worker, /res:\/\/classes\/solid\/breakable_box\/breakable_box\.gdc/);
+  assert.match(worker, /res:\/\/classes\/entity\/enemy\/thwomp\/thwomp\.gdc/);
+  assert.match(worker, /res:\/\/classes\/solid\/rotating_block\/rotating_block\.gdc/);
+  for (let index = 1; index <= 10; index += 1) {
+    assert.match(worker, new RegExp(`res://scenes/levels/llr_complete/llr_complete_${index}\\.tscn\\.remap`));
+  }
+  assert.match(worker, /headers\.set\("x-llr-extra-patch", "applied"\)/);
+  assert.match(worker, /caches\.default\.match\(cacheKey\)/);
+  assert.match(worker, /caches\.default\.put\(cacheKey, edgeResponse\)/);
+  assert.match(worker, /headers\.set\("x-llr-pck-edge-cache", "MISS"\)/);
+  assert.match(worker, /async function fetchPrecompressedGodotPck/);
+  assert.match(worker, /const originalAcceptEncoding = request\.cf\?\.clientAcceptEncoding/);
+  assert.match(worker, /typeof originalAcceptEncoding === "string"/);
+  assert.match(worker, /index\.pck\.\$\{extension\}/);
+  assert.match(worker, /headers\.set\("content-encoding", encoding\)/);
+  assert.match(worker, /encodeBody: "manual"/);
+  assert.match(worker, /public, max-age=31536000, immutable, no-transform/);
+  assert.match(worker, /safeUrlSearchParam\(referer, "pack"\)/);
+  assert.match(worker, /pack\.id === requestedPackId/);
+  assert.match(worker, /async function fetchCompressedGodotWasm\(request: Request, env: AppEnv, origin: string\)/);
+  assert.match(worker, /index\.wasm\.\$\{extension\}/);
+  assert.match(worker, /headers\.set\("x-llr-wasm-compression", encoding\)/);
+  assert.match(worker, /encoding === "identity" \? "application\/wasm" : "application\/octet-stream"/);
+  assert.match(worker, /url\.pathname === `\$\{llrMarioRunPath\}\/godot\/index\.pck`/);
+  assert.match(worker, /url\.pathname === `\$\{llrMarioRunPath\}\/godot\/index\.wasm`/);
+  assert.match(worker, /new DecompressionStream\("gzip"\)/);
+  assert.match(worker, /headers\.delete\("content-encoding"\)/);
+  assert.match(worker, /function fetchStaticAsset/);
+  assert.match(worker, /function cacheControlForStaticPath/);
+  assert.match(worker, /cubeCityRevalidatingAssetPrefixes/);
+  assert.match(worker, /\/llrgamecubecity\/fonts\//);
+  assert.match(worker, /revalidatingStaticAssetExtensions/);
+  assert.match(worker, /env\.SITE_CONFIG\.put\(key, await file\.arrayBuffer\(\)/);
+  assert.match(worker, /env\.SITE_CONFIG\.getWithMetadata/);
+  assert.match(worker, /url\.pathname\.startsWith\("\/api\/game\/assets\/"\)/);
+  assert.match(assetHeaders, /\/llrgamecubecity\/assets\/\*/);
+  assert.match(assetHeaders, /\/llrgamecubecity\/fonts\/\*/);
+  assert.match(assetHeaders, /max-age=31536000, immutable/);
+  assert.match(assetHeaders, /\/llr-mariorun\/godot\/index\.wasm\.gz/);
+  assert.match(assetHeaders, /Content-Encoding: gzip/);
+});
+
+test("default game content includes asset slots and ten fair long levels", () => {
+  assert.match(worker, /const gameAssetSlots: GameAssetSlot\[\] = \[/);
+  for (const slot of ["player.idle", "enemy.goomba", "powerup.mushroom", "boss.main", "princess.idle", "audio.bgm", "sm63.player.sheet", "sm63.enemy.goomba.walk", "sm63.pickup.coins", "sm63.audio.title", "game.bundle.pck"]) {
+    assert.match(worker, new RegExp(`id: "${slot.replace(".", "\\.")}"`));
+  }
+  assert.match(worker, /kind: "bundle"/);
+  assert.match(worker, /allowedBundleTypes/);
+  assert.match(worker, /slot\.kind === "bundle" \? "pck"/);
+  assert.match(worker, /\|pck/);
+  assert.match(worker, /clampNumber\(record\.size, 0, 20 \* 1024 \* 1024, 0\)/);
+  assert.match(worker, /const defaultGameAssetPacks: GameAssetPack\[\] = \[/);
+  assert.match(worker, /const defaultGameLevels: GameLevel\[\] = \[/);
+  const levelIds = [...worker.matchAll(/id: "level-[0-9]{2}"/g)].map((match) => match[0]);
+  assert.equal(new Set(levelIds).size, 10);
+  assert.doesNotMatch(worker, /type: "trap\./);
+  assert.match(worker, /checkpoints: \[[\s\S]*?{ x: 600[\s\S]*?{ x: 1800/);
+  assert.match(worker, /segments: \[[\s\S]*?"开场"[\s\S]*?"终点"/);
+});
+
+test("static llr-mariorun game page embeds Godot runtime with touch controls and mobile rotation", () => {
+  assert.equal(existsSync(new URL("public/llr-mariorun/index.html", root)), true);
+  assert.equal(existsSync(new URL("public/llr-mariorun/custom.html", root)), false);
+  assert.equal(existsSync(new URL("public/llr-mariorun/game.css", root)), true);
+  assert.equal(existsSync(new URL("public/llr-mariorun/launcher.js", root)), true);
+  for (const file of ["index.html", "index.js", "index.wasm.gz", "index.wasm.br", "index.pck", "index.pck.gz", "index.pck.br"]) {
+    assert.equal(existsSync(new URL(`public/llr-mariorun/godot/${file}`, root)), true);
+  }
+  assert.equal(existsSync(new URL("public/llr-mariorun/godot/index.wasm", root)), false);
+
+  const html = source("public/llr-mariorun/index.html");
+  const css = source("public/llr-mariorun/game.css");
+  const launcher = source("public/llr-mariorun/launcher.js");
+  const godotHtml = source("public/llr-mariorun/godot/index.html");
+  const godotLoader = source("public/llr-mariorun/godot/index.js");
+
+  assert.match(html, /老师大冒险/);
+  assert.match(html, /GODOT WEB EDITION/);
+  assert.doesNotMatch(html, />管理员素材库</);
+  assert.match(html, /data-admin-asset-editor hidden/);
+  assert.match(html, /href="\/admin\?game=llr-mariorun"/);
+  assert.match(html, />素材在线编辑</);
+  assert.match(html, /开始前选择/);
+  assert.match(html, /id="pack-select"/);
+  assert.doesNotMatch(html, /id="level-select"/);
+  assert.match(html, /id="start-selected-game"/);
+  assert.match(html, /id="reset-game-data"/);
+  assert.match(html, /id="import-designer-level"/);
+  assert.match(html, /id="delete-selected-designer-level"/);
+  assert.match(html, /data-reset-game-data/);
+  assert.doesNotMatch(html, /id="start-custom-level"/);
+  assert.doesNotMatch(html, /试玩编辑关卡/);
+  assert.doesNotMatch(html, /选择素材包和关卡/);
+  assert.match(html, /src="about:blank"/);
+  assert.match(html, /恢复\/重载/);
+  assert.match(html, /横屏全屏/);
+  assert.match(html, /data-key="KeyX"/);
+  assert.match(html, /data-key="KeyC"/);
+  assert.match(html, /data-key="KeyZ"/);
+  assert.match(html, /data-action="rescue"/);
+  assert.match(html, /data-action="back"/);
+  assert.match(html, /godot-frame/);
+  assert.doesNotMatch(html, /\/llr-mariorun\/godot\/index\.html/);
+  assert.match(html, /\/llr-mariorun\/godot\//);
+  assert.match(html, /launcher\.js/);
+  assert.match(css, /\.redux-hero/);
+  assert.match(css, /\.game-frame-shell/);
+  assert.match(css, /\.godot-frame/);
+  assert.match(css, /\.virtual-controls/);
+  assert.match(css, /\.prelaunch-panel/);
+  assert.match(css, /\.launch-buttons/);
+  assert.match(css, /body\.game-has-launched \.prelaunch-panel/);
+  assert.match(css, /body:not\(\.game-has-launched\) \.game-frame-shell\s*{\s*display: none/);
+  assert.match(css, /\.virtual-joystick/);
+  assert.match(css, /\.joystick-knob/);
+  assert.match(css, /body\.game-has-launched:not\(\.is-landscape-fullscreen\) \.game-frame-shell/);
+  assert.match(css, /\.is-pressed/);
+  assert.match(css, /-webkit-touch-callout:\s*none/);
+  assert.match(css, /body\.is-forced-landscape/);
+  assert.match(css, /transform:[^;]*rotate\(90deg\)/);
+  assert.match(launcher, /fetch\("\/api\/game\/manifest"/);
+  assert.match(launcher, /const adminTokenKey = "cloudflare-modular-site\.admin-token"/);
+  assert.match(launcher, /function revealAdminAssetEditorLink/);
+  assert.match(launcher, /fetch\("\/api\/admin\/game"/);
+  assert.match(launcher, /adminAssetEditorLink\.hidden = false/);
+  assert.match(launcher, /game\.bundle\.pck/);
+  assert.match(launcher, /function importDesignerLevelFile/);
+  assert.match(launcher, /function deleteSelectedDesignerLevel/);
+  assert.match(launcher, /\/api\/admin\/game\/designer-levels/);
+  assert.match(launcher, /method: "DELETE"/);
+  assert.match(launcher, /function renderPrelaunchChoices/);
+  assert.match(html, /data-game-src="\/llr-mariorun\/godot\/"/);
+  assert.match(launcher, /function selectedGameUrl/);
+  assert.match(launcher, /url\.searchParams\.set\("packVersion", String\(packVersion\)\.slice\(0, 160\)\)/);
+  assert.match(launcher, /"\/llr-mariorun\/godot\/"/);
+  assert.match(launcher, /function startSelectedGame/);
+  assert.match(launcher, /function startSelectedGame\(\) \{\s*clearResumeScene\(\);\s*loadGameRuntime\(\);\s*\}/);
+  assert.match(launcher, /focusButton\?\.addEventListener\("click", \(\) => \{[\s\S]*?isFrameBlank\(\)[\s\S]*?startSelectedGame\(\)/);
+  assert.match(launcher, /function recoverGameRuntime/);
+  assert.match(launcher, /function returnToLauncher/);
+  assert.match(launcher, /function rescueGameRuntime/);
+  assert.match(launcher, /llr-godot-missing-features/);
+  assert.match(launcher, /Godot 运行环境缺少能力/);
+  assert.match(launcher, /这台设备或浏览器没有开启 WebGL2/);
+  assert.match(launcher, /建议更换 Edge 浏览器/);
+  assert.match(launcher, /frame\.src = "about:blank"/);
+  assert.match(launcher, /cacheBust: true/);
+  assert.match(launcher, /searchParams\.set\("run", String\(Date\.now\(\)\)\)/);
+  assert.match(launcher, /document\.body\.classList\.add\("game-has-launched"\)/);
+  assert.match(launcher, /function bindVirtualJoystick/);
+  assert.match(launcher, /const movementKeyAliases/);
+  assert.match(launcher, /KeyA/);
+  assert.match(launcher, /KeyW/);
+  assert.match(launcher, /function emitMovementKey/);
+  assert.match(launcher, /const horizontalThreshold = radius \* 0\.28/);
+  assert.match(launcher, /const verticalThreshold = radius \* 0\.48/);
+  assert.match(launcher, /setKey\("ArrowUp", y < -verticalThreshold\)/);
+  assert.match(launcher, /setKey\("ArrowDown", y > verticalThreshold\)/);
+  assert.match(launcher, /window\.setInterval\(\(\) => \{/);
+  assert.match(launcher, /emitMovementKey\(code, "keydown", \{ repeat: true \}\)/);
+  assert.match(launcher, /function resetVirtualInputs/);
+  assert.match(launcher, /function attachGodotCanvasRecovery/);
+  assert.match(launcher, /webglcontextlost/);
+  assert.match(launcher, /recoverGameRuntime\("WebGL 已丢失，正在重建游戏运行时…"\)/);
+  assert.match(launcher, /webglcontextrestored/);
+  assert.match(launcher, /window\.addEventListener\("blur", resetVirtualInputs\)/);
+  assert.match(launcher, /screen\.orientation\?\.lock\?\.\("landscape-primary"\)/);
+  assert.doesNotMatch(launcher, /\/llr-mariorun\/custom\.html/);
+  assert.match(launcher, /searchParams\.set\("pack", selectedPackId\)/);
+  assert.match(godotHtml, /window\.fetch = function/);
+  assert.doesNotMatch(godotHtml, /rel="preload" href="index\.wasm"/);
+  assert.match(godotHtml, /rel="preload" href="index\.js\?v=llr-secure-context-20260627"/);
+  assert.match(godotHtml, /<script src="index\.js\?v=llr-secure-context-20260627"><\/script>/);
+  assert.match(godotHtml, /window\.parent\.postMessage\(\{ type: 'llr-godot-missing-features'/);
+  assert.match(godotHtml, /这台设备或浏览器没有开启 WebGL2/);
+  assert.match(godotHtml, /建议更换 Edge 浏览器/);
+  assert.match(godotHtml, /\/\\\/index\\\.pck\$/);
+  assert.match(godotHtml, /url\.searchParams\.set\('pack', selectedPack\)/);
+  assert.match(godotHtml, /const BUILTIN_PCK_VERSION = '[a-f0-9]{16}'/);
+  assert.match(godotHtml, /const BUILTIN_WASM_VERSION = '[a-f0-9]{16}'/);
+  assert.match(godotHtml, /url\.searchParams\.set\('v', BUILTIN_WASM_VERSION\)/);
+  assert.match(godotHtml, /url\.searchParams\.set\('v', \[BUILTIN_PCK_VERSION, selectedPackVersion\]/);
+  assert.doesNotMatch(godotHtml, /url\.searchParams\.set\('run', runId\)/);
+  assert.match(godotHtml, /cache: init\?\.cache \|\| 'default'/);
+  assert.doesNotMatch(godotHtml, /cache: 'no-store'/);
+  assert.match(worker, /const requestUrl = new URL\(request\.url\)/);
+  assert.match(worker, /requestUrl\.searchParams\.get\("pack"\) \|\| safeUrlSearchParam\(referer, "pack"\)/);
+  assert.match(worker, /headers\.set\("cache-control", pckClientCacheControl\(requestUrl, true\)\)/);
+  assert.match(worker, /\? "no-store, max-age=0"/);
+  assert.match(worker, /headers\.set\("x-llr-pack-id", activePack\?\.id \|\| requestedPackId \|\| "default"\)/);
+  assert.doesNotMatch(launcher, /searchParams\.set\("level"/);
+  assert.doesNotMatch(launcher, /selectedLevelId/);
+  assert.doesNotMatch(launcher, /levelSelect/);
+  assert.match(launcher, /function resetGameData/);
+  assert.match(launcher, /querySelectorAll\("\[data-reset-game-data\]"\)/);
+  assert.match(launcher, /indexedDB\.deleteDatabase/);
+  assert.match(launcher, /FILE_DATA/);
+  assert.match(launcher, /ArrowUp/);
+  assert.match(launcher, /KeyX/);
+  assert.match(launcher, /KeyC/);
+  assert.match(launcher, /KeyZ/);
+  assert.match(launcher, /function bindVirtualControls\(\)/);
+  assert.match(launcher, /button\.classList\.add\("is-pressed"\)/);
+  assert.match(launcher, /new KeyboardEvent\(type/);
+  assert.match(launcher, /function requestLandscapeFullscreen/);
+  assert.match(launcher, /recoverGameRuntime\("已退出全屏，正在恢复游戏运行时…"\)/);
+  assert.match(launcher, /screen\.orientation\?\.lock\?\.\("landscape"\)/);
+  assert.match(godotLoader, /window\['isSecureContext'\] === true \|\|/);
+  assert.match(godotLoader, /window\.location\.protocol === 'https:'/);
+  assert.match(godotLoader, /new DecompressionStream\('gzip'\)/);
+  assert.match(godotLoader, /new Response\(response\.clone\(\)\.body, \{ 'headers': \[\['content-type', 'application\/wasm'\]\] \}\)/);
+  assert.match(godotLoader, /WebAssembly\.instantiate\(bytes, imports\)/);
+});
+
+test("llr-mariorun void rescue returns to a validated recent landing instead of a fixed sky height", () => {
+  const rescue = source("vendor/Legacy_SM63Redux/classes/zone/trigger/death_plane/death_plane.gd");
+  const rescueTemplate = source("tools/godot-patches/death_plane.gd");
+  const patch = source("tools/patch-llr-mariorun-controls.mjs");
+  assert.equal(rescue, rescueTemplate);
+  assert.match(rescue, /SAFE_HISTORY_LIMIT := 24/);
+  assert.match(rescue, /func _can_remember_position\(player\) -> bool:/);
+  assert.match(rescue, /func _find_valid_respawn\(player\) -> Vector2:/);
+  assert.match(rescue, /PhysicsRayQueryParameters2D\.create/);
+  assert.match(rescue, /PhysicsShapeQueryParameters2D\.new\(\)/);
+  assert.match(rescue, /player\.switch_state\(PLAYER_NEUTRAL_STATE\)/);
+  assert.match(rescue, /var _checkpoint_positions: Array\[Vector2\] = \[\]/);
+  assert.match(rescue, /FLOOR_PROBE_X_OFFSETS := \[-6\.0, 0\.0, 6\.0\]/);
+  assert.match(rescue, /floor_normal\.y > MAX_FLOOR_NORMAL_Y/);
+  assert.match(rescue, /player\.bouncing = false/);
+  assert.match(rescue, /player\.locked = false/);
+  assert.match(rescue, /player\.water_areas = 0/);
+  assert.match(rescue, /player\.end_fludd\(\)/);
+  assert.doesNotMatch(rescue, /SKY_RESPAWN_OFFSET|MIN_RESPAWN_Y/);
+  assert.match(patch, /Death-plane safe landing history patch is missing/);
+});
+
+test("llr-mariorun Godot pack exposes ten original long Extras levels and rescues void falls", () => {
+  const entries = parseGodotPckEntryNames("public/llr-mariorun/godot/index.pck");
+  assert.ok(entries.includes("res://scenes/menus/title/main_menu/main_menu.gdc"));
+  assert.ok(entries.includes("res://classes/zone/trigger/death_plane/death_plane.gdc"));
+  assert.ok(entries.includes("res://scenes/menus/level_designer/items.xml"));
+  assert.ok(!entries.includes("res://scenes/menus/level_designer/items.xml.tres"));
+  for (const mechanic of ["llr_spring", "llr_conveyor", "llr_pound_gate", "llr_coin_gate", "llr_shuttle", "llr_objective_target"]) {
+    assert.ok(entries.includes(`res://classes/solid/${mechanic}/${mechanic}.gdc`));
+    assert.ok(entries.includes(`res://classes/solid/${mechanic}/${mechanic}.tscn.remap`));
+  }
+  assert.ok(entries.includes("res://classes/zone/llr_set_piece_director/llr_set_piece_director.gdc"));
+  assert.ok(entries.includes("res://classes/zone/llr_set_piece_director/llr_set_piece_director.tscn.remap"));
+  assert.ok(entries.includes("res://classes/water/water_viewport.gd.remap"));
+  assert.ok(entries.includes("res://classes/water/water_viewport.gdc"));
+  assert.ok(entries.includes("res://classes/solid/breakable_box/breakable_box.gdc"));
+  assert.ok(entries.includes("res://classes/entity/enemy/thwomp/thwomp.gdc"));
+  assert.ok(entries.includes("res://classes/solid/rotating_block/rotating_block.gdc"));
+  for (let index = 1; index <= 10; index += 1) {
+    assert.ok(entries.includes(`res://scenes/levels/llr_complete/llr_complete_${index}.tscn.remap`));
+    assert.ok(entries.some((entry) => entry.endsWith(`-llr_complete_${index}.scn`)));
+  }
+  assert.equal(existsSync(new URL("public/llr-mariorun/extra/smb-1-1/index.html", root)), false);
+});
+
+test("llr-mariorun Extras menu offers ten complete touch-friendly V4 level choices", () => {
+  const v4Blueprints = [
+    "tools/llr-level-v4.mjs",
+    ...Array.from({ length: 9 }, (_, index) => `tools/llr-level-v4-stage${index + 2}.mjs`)
+  ].map(source).join("\n");
+  const menu = source("vendor/Legacy_SM63Redux/scenes/menus/title/main_menu/main_menu.gd");
+  for (const title of ["风车牧场", "潮汐水道", "爆弹拆迁城", "火箭蘑菇井", "云端货运站", "涡轮海岸公路", "飞鸟迁徙谷", "钟楼机关城", "遗迹寻宝环线", "老师城"]) {
+    assert.match(v4Blueprints, new RegExp(title));
+    assert.match(menu, new RegExp(title));
+  }
+  assert.match(menu, /十关均为 V4 长流程事件关卡/);
+  assert.match(menu, /func _open_extras_menu\(\) -> void:/);
+  assert.match(menu, /func _launch_extra_level\(scene: String\) -> void:/);
+  assert.match(menu, /button\.pressed\.connect\(_launch_extra_level\.bind/);
+  assert.match(menu, /if !show_options and !show_extras:/);
+});
+
+test("llr-mariorun Extras level 1 is a non-uniform eight-beat V4 event slice", () => {
+  const scene = source("vendor/Legacy_SM63Redux/scenes/levels/llr_complete/llr_complete_1.tscn");
+  const blueprint = source("tools/llr-level-v4.mjs");
+  assert.equal((scene.match(/\[node name="LLRBeat\d{2}_/g) || []).length, 8);
+  assert.equal((scene.match(/metadata\/_llr_geometry_version = 4/g) || []).length, 8);
+  assert.equal((scene.match(/metadata\/_llr_kind = "main"/g) || []).length, 8);
+  assert.ok((scene.match(/metadata\/_llr_kind = "recovery"/g) || []).length >= 4);
+  assert.equal((scene.match(/metadata\/_llr_player_event = /g) || []).length, 8);
+  assert.equal((scene.match(/metadata\/_llr_failure_route = /g) || []).length, 8);
+  assert.equal((scene.match(/metadata\/_llr_input_budget = "direction\+one-action"/g) || []).length, 8);
+  assert.equal((scene.match(/metadata\/_llr_act = 1/g) || []).length, 2);
+  assert.equal((scene.match(/metadata\/_llr_act = 2/g) || []).length, 4);
+  assert.equal((scene.match(/metadata\/_llr_act = 3/g) || []).length, 2);
+  assert.equal((scene.match(/metadata\/_llr_cadence = "introduction"/g) || []).length, 2);
+  assert.equal((scene.match(/metadata\/_llr_cadence = "development"/g) || []).length, 3);
+  assert.equal((scene.match(/metadata\/_llr_cadence = "twist"/g) || []).length, 2);
+  assert.equal((scene.match(/metadata\/_llr_cadence = "resolution"/g) || []).length, 1);
+  const spans = [...scene.matchAll(/metadata\/_llr_start_x = (\d+)\nmetadata\/_llr_end_x = (\d+)/g)]
+    .map((match) => Number(match[2]) - Number(match[1]));
+  assert.equal(spans.length, 8);
+  assert.ok(new Set(spans).size >= 6);
+  assert.match(scene, /metadata\/_llr_campaign_version = 4/);
+  assert.match(scene, /metadata\/_llr_main_seconds = 204/);
+  assert.match(scene, /llr_set_piece_director\/llr_set_piece_director\.tscn/);
+  assert.match(scene, /\[node name="B6WindReverseDirector"/);
+  assert.match(scene, /target_paths = Array\[NodePath\]/);
+  assert.match(scene, /\[node name="StormTint" type="CanvasModulate"/);
+  assert.match(scene, /\[node name="B3SafeTraversalContract"/);
+  assert.match(scene, /\[node name="B2SafeRecoveryContract"/);
+  assert.equal((scene.match(/\[node name="B2RecoveryStep\d"/g) || []).length, 3);
+  assert.doesNotMatch(scene, /\[node name="B2(?:MushroomStep|RecoveryStack|WheelLandingCloud)/);
+  assert.match(scene, /metadata\/_llr_max_open_gap = 100/);
+  assert.match(scene, /metadata\/_llr_max_upward_rise = 76/);
+  assert.match(scene, /metadata\/_llr_min_landing_width = 159/);
+  assert.match(scene, /metadata\/_llr_water_return_stairs = true/);
+  assert.match(scene, /metadata\/_llr_void_required = false/);
+  assert.equal((scene.match(/\[node name="B3(?:Left|Right)WaterStairBank"/g) || []).length, 2);
+  assert.equal((scene.match(/metadata\/_llr_deep_structural_terrain = true/g) || []).length, 3);
+  assert.match(scene, /\[node name="B4TowerExitStairBank"/);
+  assert.match(scene, /\[node name="B4SafeTowerExitContract"/);
+  assert.match(scene, /metadata\/_llr_stair_count = 7/);
+  assert.match(scene, /metadata\/_llr_max_step_rise = 50/);
+  assert.match(scene, /metadata\/_llr_min_tread_width = 70/);
+  assert.match(scene, /metadata\/_llr_dynamic_mechanism_required = false/);
+  assert.match(scene, /\[node name="B5OpenMainRouteContract"/);
+  assert.match(scene, /metadata\/_llr_minimum_headroom = 120/);
+  assert.equal((scene.match(/\[node name="B5Shortcut[A-E]"/g) || []).length, 5);
+  assert.doesNotMatch(scene, /\[node name="B5(?:MidA|MidB|HighA|HighB|MidBridge1|HighBridge|MidSpring)"/);
+  assert.match(scene, /\[node name="B3UpperRest"[\s\S]*?scale = Vector2\(3\.5, 1\)/);
+  assert.match(scene, /\[node name="B3UpperFallingSafety"/);
+  assert.match(scene, /\[node name="B6RecoveryLift"/);
+  assert.match(scene, /\[node name="B8RecoveryLift"/);
+  assert.equal((scene.match(/\[node name="B7CreekBed\d"/g) || []).length, 5);
+  assert.equal((scene.match(/\[node name="B7CreekExitStep\d"/g) || []).length, 5);
+  assert.doesNotMatch(scene, /\[node name="(?:B6RecoveryMushroom|B8RecoveryMushroom|B8RecoveryCloud2)"/);
+  assert.match(scene, /\[node name="FinishWarp"[\s\S]*?position = Vector2\(25045, -250\)/);
+  assert.match(scene, /scene_path = "res:\/\/scenes\/levels\/llr_complete\/llr_complete_2\.tscn"/);
+  assert.doesNotMatch(scene, /\[node name="LLRSegment/);
+  assert.doesNotMatch(scene, /metadata\/_llr_campaign_version = 3/);
+  assert.match(blueprint, /topology: "vertical-spiral"/);
+  assert.match(blueprint, /topology: "state-change-wheel"/);
+  assert.match(blueprint, /topology: "layered-descent"/);
+  const nodeCount = (scene.match(/^\[node /gm) || []).length;
+  assert.ok(nodeCount >= 140 && nodeCount <= 500);
+});
+
+test("llr-mariorun Extras level 2 is a physical eight-beat V4 tide route", () => {
+  const scene = source("vendor/Legacy_SM63Redux/scenes/levels/llr_complete/llr_complete_2.tscn");
+  const blueprint = source("tools/llr-level-v4-stage2.mjs");
+  assert.equal((scene.match(/\[node name="LLRBeat\d{2}_/g) || []).length, 8);
+  assert.equal((scene.match(/metadata\/_llr_geometry_version = 4/g) || []).length, 8);
+  assert.equal((scene.match(/metadata\/_llr_act = 1/g) || []).length, 2);
+  assert.equal((scene.match(/metadata\/_llr_act = 2/g) || []).length, 4);
+  assert.equal((scene.match(/metadata\/_llr_act = 3/g) || []).length, 2);
+  const spans = [...scene.matchAll(/metadata\/_llr_start_x = (\d+)\nmetadata\/_llr_end_x = (\d+)/g)]
+    .map((match) => Number(match[2]) - Number(match[1]));
+  assert.equal(spans.length, 8);
+  assert.ok(new Set(spans).size >= 6);
+  assert.match(scene, /metadata\/_llr_campaign_version = 4/);
+  assert.match(scene, /metadata\/_llr_main_seconds = 204/);
+  assert.match(scene, /\[node name="B1FastFerry"/);
+  assert.match(scene, /\[node name="B2WaterLift"/);
+  assert.equal((scene.match(/\[node name="B3Ferry[AB]"/g) || []).length, 2);
+  assert.match(scene, /\[node name="B4RaiseTideDirector"[\s\S]*?move_paths = Array\[NodePath\]\(\[NodePath\("\.\.\/Water\/B5TideWater"\)\]\)[\s\S]*?move_offset = Vector2\(0, -240\)[\s\S]*?move_seconds = 1\.6/);
+  assert.match(scene, /metadata\/_llr_physical_water_move = true/);
+  assert.equal((scene.match(/\[node name="B5TideBed\d"/g) || []).length, 5);
+  assert.match(scene, /\[node name="B6FoldbackPipe"/);
+  assert.match(scene, /\[node name="B6ReturnStairBank"/);
+  assert.equal((scene.match(/\[node name="B6BridgeBed\d"/g) || []).length, 5);
+  assert.equal((scene.match(/\[node name="B7DrainWater[A-C]"/g) || []).length, 3);
+  assert.equal((scene.match(/\[node name="B7DrainBed\d"/g) || []).length, 5);
+  assert.match(scene, /\[node name="B8LighthouseLift"/);
+  assert.match(scene, /\[node name="B8SafeLighthouseContract"/);
+  assert.match(scene, /metadata\/_llr_safe_water_route = true/);
+  assert.match(scene, /metadata\/_llr_spatial_foldback = true/);
+  assert.match(scene, /\[node name="FinishWarp"[\s\S]*?position = Vector2\(25045, 100\)/);
+  assert.match(scene, /scene_path = "res:\/\/scenes\/levels\/llr_complete\/llr_complete_3\.tscn"/);
+  assert.doesNotMatch(scene, /\[node name="LLRSegment/);
+  assert.match(blueprint, /beat\(1, "港口双路线", "harbor-dual-preview"/);
+  assert.match(blueprint, /beat\(4, "船闸开闸", "tide-gate-event"/);
+  assert.match(blueprint, /beat\(6, "桥下折返", "pipe-foldback-loop"/);
+  const nodeCount = (scene.match(/^\[node /gm) || []).length;
+  assert.ok(nodeCount >= 180 && nodeCount <= 500);
+});
+
+test("llr-mariorun Extras levels 3-10 are independent audited V4 stages with chained finishes", () => {
+  for (let index = 3; index <= 10; index += 1) {
+    const scene = source(`vendor/Legacy_SM63Redux/scenes/levels/llr_complete/llr_complete_${index}.tscn`);
+    const blueprint = source(`tools/llr-level-v4-stage${index}.mjs`);
+    assert.equal((scene.match(/\[node name="LLRBeat\d{2}_/g) || []).length, 8);
+    assert.equal((scene.match(/metadata\/_llr_geometry_version = 4/g) || []).length, 8);
+    assert.equal((scene.match(/metadata\/_llr_act = 1/g) || []).length, 2);
+    assert.equal((scene.match(/metadata\/_llr_act = 2/g) || []).length, 4);
+    assert.equal((scene.match(/metadata\/_llr_act = 3/g) || []).length, 2);
+    assert.equal((scene.match(/metadata\/_llr_cadence = "introduction"/g) || []).length, 2);
+    assert.equal((scene.match(/metadata\/_llr_cadence = "development"/g) || []).length, 3);
+    assert.equal((scene.match(/metadata\/_llr_cadence = "twist"/g) || []).length, 2);
+    assert.equal((scene.match(/metadata\/_llr_cadence = "resolution"/g) || []).length, 1);
+    assert.equal((scene.match(/metadata\/_llr_kind = "main"/g) || []).length, 8);
+    assert.ok((scene.match(/metadata\/_llr_kind = "recovery"/g) || []).length >= 2);
+    assert.equal((scene.match(/metadata\/_llr_player_event = /g) || []).length, 8);
+    assert.equal((scene.match(/metadata\/_llr_failure_route = /g) || []).length, 8);
+    assert.equal((scene.match(/metadata\/_llr_input_budget = "direction\+one-action"/g) || []).length, 8);
+    const setPieces = [...scene.matchAll(/\[node name="LLRBeat\d{2}_[^\"]+"[^\]]*\][\s\S]*?metadata\/_llr_set_piece = "([^"]+)"/g)]
+      .map((match) => match[1]);
+    assert.equal(setPieces.length, 8);
+    assert.equal(new Set(setPieces).size, 8);
+    const forms = [...scene.matchAll(/\[node name="LLRBeat\d{2}_([^"]+)"/g)].map((match) => match[1]);
+    assert.equal(new Set(forms).size, 8);
+    const mechanicSets = [...scene.matchAll(/metadata\/_llr_mechanics = "([^"]+)"/g)].map((match) => match[1]);
+    assert.equal(mechanicSets.length, 8);
+    assert.ok(new Set(mechanicSets).size >= 8);
+    assert.ok(new Set(mechanicSets.flatMap((value) => value.split(","))).size >= 6);
+    assert.match(scene, /metadata\/_llr_points = PackedVector2Array\(/);
+    assert.doesNotMatch(scene, /type="Marker2D" parent="Route"/);
+    const spans = [...scene.matchAll(/metadata\/_llr_start_x = (\d+)\nmetadata\/_llr_end_x = (\d+)/g)]
+      .map((match) => Number(match[2]) - Number(match[1]));
+    assert.equal(spans.length, 8);
+    assert.ok(new Set(spans).size >= 6);
+    const nodeCount = (scene.match(/^\[node /gm) || []).length;
+    assert.ok(nodeCount >= 180);
+    assert.ok(nodeCount <= 650);
+    const flow = scene.match(/metadata\/_llr_main_seconds = (\d+(?:\.\d+)?)/);
+    assert.ok(flow && Number(flow[1]) >= 200 && Number(flow[1]) <= 250);
+    assert.match(scene, /metadata\/_llr_campaign_version = 4/);
+    assert.match(scene, /metadata\/_llr_void_required = false/);
+    assert.match(scene, /metadata\/_llr_state_change = true/);
+    assert.match(scene, /\[node name="FinishWarp"/);
+    assert.match(scene, /\[node name="VoidRescue"/);
+    assert.doesNotMatch(scene, /\[node name="LLRSegment/);
+    assert.doesNotMatch(scene, /scene_path = "res:\/\/scenes\/levels\/tutorial_1\//);
+    assert.match(blueprint, new RegExp(`id: ${index}`));
+    if (index < 10) {
+      assert.match(scene, new RegExp(`scene_path = "res://scenes/levels/llr_complete/llr_complete_${index + 1}\\.tscn"`));
+    } else {
+      assert.match(scene, /scene_path = "res:\/\/scenes\/menus\/title\/main_menu\/main_menu\.tscn"/);
+    }
+  }
+});
+
+test("llr-mariorun all-V4 strict geometry and gameplay-variety audit passes", () => {
+  const result = spawnSync(process.execPath, ["tools/audit-llr-level-geometry.mjs", "--strict", "--all-v4"], {
+    cwd: root,
+    encoding: "utf8"
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /"totalViolations": 0/);
+});
+
+test("llr-mariorun short headless runtime probes replace full playthroughs", () => {
+  const result = spawnSync(process.execPath, ["tools/test-llr-godot-level-probes.mjs"], {
+    cwd: root,
+    encoding: "utf8",
+    timeout: 30000
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /all 10 V4 stages loaded; recovery floors and physical events verified/);
+});
+
+test("llr-mariorun Extras support scenes implement vehicles, objectives and physical state changes", () => {
+  const patch = source("tools/patch-llr-complete-level.mjs");
+  const script = source("vendor/Legacy_SM63Redux/classes/solid/llr_shuttle/llr_shuttle.gd");
+  const shuttle = source("vendor/Legacy_SM63Redux/classes/solid/llr_shuttle/llr_shuttle.tscn");
+  const director = source("vendor/Legacy_SM63Redux/classes/zone/llr_set_piece_director/llr_set_piece_director.gd");
+  const directorScene = source("vendor/Legacy_SM63Redux/classes/zone/llr_set_piece_director/llr_set_piece_director.tscn");
+  const objective = source("vendor/Legacy_SM63Redux/classes/solid/llr_objective_target/llr_objective_target.gd");
+  const breakableBox = source("vendor/Legacy_SM63Redux/classes/solid/breakable_box/breakable_box.gd");
+  const rotatingBlock = source("vendor/Legacy_SM63Redux/classes/solid/rotating_block/rotating_block.gd");
+  const thwomp = source("vendor/Legacy_SM63Redux/classes/entity/enemy/thwomp/thwomp.gd");
+  const rebindOption = source("vendor/Legacy_SM63Redux/gui/pause/options/rebind_option.gd");
+  assert.match(patch, /buildV3StageScene/);
+  assert.match(patch, /llr_shuttle\/llr_shuttle\.tscn/);
+  assert.match(script, /platform\.scale = Vector2\(1\.75, 1\.0\)/);
+  assert.match(script, /smoothstep\(0\.0, 1\.0/);
+  assert.match(script, /enum MODE \{[\s\S]*ONE_SHOT,[\s\S]*PROXIMITY/);
+  assert.match(script, /activation_radius/);
+  assert.match(script, /func activate\(\)/);
+  assert.match(shuttle, /moving_platform\/moving_platform\.tscn/);
+  assert.match(director, /target\.set\(numeric_property/);
+  assert.match(director, /movement\.tween_property\(target, "position", destination, move_seconds\)/);
+  assert.match(director, /movement\.set_process_mode\(Tween\.TWEEN_PROCESS_PHYSICS\)/);
+  assert.match(director, /objective_paths/);
+  assert.match(director, /target_method/);
+  assert.match(director, /forced_nozzle/);
+  assert.match(director, /rescue\.register_checkpoint/);
+  assert.match(directorScene, /signal="body_entered"/);
+  assert.match(thwomp, /enum F \{\n\tIDLE = 0,\n\tBLINK = 1,/);
+  assert.match(thwomp, /collider\.register_thwomp_impact\(self\)/);
+  assert.match(objective, /GROUND_POUND = 1/);
+  assert.match(objective, /SPIN = 2/);
+  assert.match(objective, /THWOMP = 4/);
+  assert.match(objective, /signal completed/);
+  assert.match(breakableBox, /persistent_destroy/);
+  assert.match(breakableBox, /var _destroyed := false/);
+  assert.match(rotatingBlock, /func llr_calibrate_phase\(\)/);
+  assert.match(rebindOption, /if !is_node_ready\(\) or !is_instance_valid\(key_list\):/);
+});
+
+test("llr-mariorun Extras V4 shared mechanisms are generated from reproducible sources", () => {
+  const patch = source("tools/patch-llr-complete-level.mjs");
+  const spring = source("vendor/Legacy_SM63Redux/classes/solid/llr_spring/llr_spring.gd");
+  const conveyor = source("vendor/Legacy_SM63Redux/classes/solid/llr_conveyor/llr_conveyor.gd");
+  const poundGate = source("vendor/Legacy_SM63Redux/classes/solid/llr_pound_gate/llr_pound_gate.gd");
+  const coinGate = source("vendor/Legacy_SM63Redux/classes/solid/llr_coin_gate/llr_coin_gate.gd");
+  const objective = source("tools/godot-patches/llr_objective_target.gd");
+  const breakable = source("tools/godot-patches/breakable_box.gd");
+  for (const resource of ["llr_spring", "llr_conveyor", "llr_pound_gate", "llr_coin_gate", "llr_shuttle", "llr_objective_target"]) {
+    assert.match(patch, new RegExp(`${resource}/${resource}\\.tscn`));
+  }
+  assert.match(spring, /launch_speed/);
+  assert.match(spring, /body\.set\("vel"/);
+  assert.match(conveyor, /body\.position\.x \+= speed \* delta/);
+  assert.match(poundGate, /body\.S\.POUND/);
+  assert.match(coinGate, /Singleton\.red_coin_total - starting_coins/);
+  assert.match(objective, /register_thwomp_impact/);
+  assert.match(breakable, /FlagServer\.set_flag_state\(_destroy_flag_id, true\)/);
+  for (let index = 2; index <= 10; index += 1) {
+    assert.match(patch, new RegExp(`llr-level-v4-stage${index}\\.mjs`));
+  }
+});
+
+test("llr-mariorun Level Designer keeps negative coordinates and exports clean data files", () => {
+  const serializer = source("vendor/Legacy_SM63Redux/scenes/menus/level_designer/serializers/serializer.gd");
+  const designer = source("vendor/Legacy_SM63Redux/scenes/menus/level_designer/ld_main.gd");
+  const designerMusic = source("vendor/Legacy_SM63Redux/scenes/menus/level_designer/music.gd");
+  const exportPresets = source("vendor/Legacy_SM63Redux/export_presets.cfg");
+  const packageJson = source("package.json");
+  assert.match(serializer, /bytes\.slice\(\s*0, half\s*\)/);
+  assert.match(serializer, /bytes\.slice\(\s*half, size\s*\)/);
+  assert.match(serializer, /val < -sign_bit or val > sign_bit - 1/);
+  assert.doesNotMatch(designer, /serializer\.run_tests\(true\)/);
+  assert.match(designer, /parser\.open\("res:\/\/scenes\/menus\/level_designer\/items\.xml"\)/);
+  assert.doesNotMatch(designerMusic, /preload\("\.\/music\/editor[1-4]\.ogg"\)/);
+  assert.match(designerMusic, /ResourceLoader\.exists\(path\)/);
+  assert.match(exportPresets, /name="Web"[\s\S]*?include_filter="\*\.xml"/);
+  assert.match(packageJson, /tools\/test-llr-godot-serializer\.mjs/);
+  assert.match(packageJson, /tools\/test-llr-godot-mechanisms\.mjs/);
+});
+
+test("admin app exposes llr-mariorun entry and online editors", () => {
+  assert.match(app, /const llrMarioRunPath = "\/llr-mariorun"/);
+  assert.match(app, /function renderAdminGameEditor\(\)/);
+  assert.match(app, /function shouldRenderAdminGameEditor\(\)/);
+  assert.match(app, /get\("game"\) === "llr-mariorun"/);
+  assert.match(app, /function clearAdminGameEditorMode\(\)/);
+  assert.match(app, /if \(gameEditorMode\) \{[\s\S]*?content\.append\(renderAdminGameEditor\(\)\)/);
+  assert.doesNotMatch(app, /panel\.append\(renderAdminGameEditor\(\)\)/);
+  assert.match(app, /async function loadAdminGameConfig\(\)/);
+  assert.match(app, /function renderGameAssetPackEditor/);
+  assert.match(app, /function renderPckArchiveEditor/);
+  assert.match(app, /function parseGodotPck/);
+  assert.match(app, /function buildGodotPck/);
+  assert.match(app, /function guessPckEntryType/);
+  assert.match(app, /PCK 在线编辑器/);
+  assert.match(app, /查看 PCK 内容/);
+  assert.match(app, /保存成新素材包/);
+  assert.match(app, /pack\?\.id === "original"/);
+  assert.match(app, /source=pck-editor/);
+  assert.match(app, /可直接读取内置原版/);
+  assert.match(app, /function importLocalGameAssetPacks/);
+  assert.match(app, /function dataUrlToFile/);
+  assert.match(app, /function downloadJson/);
+  assert.match(app, /function templateAssetForSlot/);
+  assert.match(app, /function defaultAssetFilename/);
+  assert.match(app, /function findFirstAssetForSlot/);
+  assert.match(app, /导入本地素材包/);
+  assert.match(app, /下载素材包模板/);
+  assert.match(app, /下载当前素材/);
+  assert.match(app, /素材在线编辑/);
+  assert.match(app, /\.pck,application\/octet-stream/);
+  assert.match(app, /function renderGameDataEditor/);
+  assert.match(app, /游戏数据保存/);
+  assert.doesNotMatch(app, /game-level-designer/);
+  assert.doesNotMatch(app, /在线关卡设计/);
+  assert.match(app, /\/api\/admin\/game/);
+  assert.match(app, /\/api\/admin\/game\/assets/);
+  assert.match(worker, /handleAdminDesignerLevels/);
+  assert.match(worker, /request\.method === "DELETE"/);
+  assert.match(worker, /designerSource === "sm63-redux"/);
+  assert.match(app, /老师大冒险/);
+  assert.match(styles, /\.game-admin-panel/);
+  assert.match(styles, /\.game-editor-tools/);
+  assert.match(styles, /\.game-import-button/);
+  assert.match(styles, /\.game-asset-slot-grid/);
+  assert.match(styles, /\.pck-entry-list/);
+  assert.match(styles, /\.pck-entry-preview/);
+  assert.doesNotMatch(styles, /\.game-level-designer/);
+  assert.doesNotMatch(styles, /\.game-level-preview/);
+  assert.doesNotMatch(styles, /\.game-level-object/);
+  assert.match(styles, /\.game-level-editor/);
+});
+
+test("Godot pack export synchronizes the generated PCK size into the web shell", () => {
+  const exporter = readFileSync("tools/export-llr-godot-pck.mjs", "utf8");
+  assert.match(exporter, /const pckHash = createHash\("sha256"\)/);
+  assert.match(exporter, /gzipSync\(pckBuffer/);
+  assert.match(exporter, /brotliCompressSync\(pckBuffer/);
+  assert.match(exporter, /const wasmBuffer = gunzipSync/);
+  assert.match(exporter, /writeFileSync\(targetWasmBrotli, wasmBrotliBuffer\)/);
+  assert.match(exporter, /fileSizes/);
+  assert.match(exporter, /replace\(fileSizePattern, `\$1\$\{pckBytes\}`\)/);
+  assert.match(exporter, /replace\(pckVersionPattern, `\$1\$\{pckVersion\}\$2`\)/);
+  assert.match(exporter, /replace\(wasmVersionPattern, `\$1\$\{wasmVersion\}\$2`\)/);
+  const html = source("public/llr-mariorun/godot/index.html");
+  const configuredBytes = Number(html.match(/"fileSizes":\{"index\.pck":(\d+)/)?.[1]);
+  const pck = readFileSync(new URL("public/llr-mariorun/godot/index.pck", root));
+  const actualBytes = pck.byteLength;
+  assert.equal(configuredBytes, actualBytes);
+  assert.deepEqual(gunzipSync(readFileSync(new URL("public/llr-mariorun/godot/index.pck.gz", root))), pck);
+  assert.deepEqual(brotliDecompressSync(readFileSync(new URL("public/llr-mariorun/godot/index.pck.br", root))), pck);
+  const wasm = gunzipSync(readFileSync(new URL("public/llr-mariorun/godot/index.wasm.gz", root)));
+  assert.deepEqual(brotliDecompressSync(readFileSync(new URL("public/llr-mariorun/godot/index.wasm.br", root))), wasm);
+});

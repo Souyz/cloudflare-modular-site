@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+		<title>Super Mario 63 Redux</title>
+		<style>
+html, body, #canvas {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+body {
+	color: white;
+	background-color: black;
+	overflow: hidden;
+	touch-action: none;
+}
+
+#canvas {
+	display: block;
+}
+
+#canvas:focus {
+	outline: none;
+}
+
+#status, #status-splash, #status-progress {
+	position: absolute;
+	left: 0;
+	right: 0;
+}
+
+#status, #status-splash {
+	top: 0;
+	bottom: 0;
+}
+
+#status {
+	background-color: #242424;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	visibility: hidden;
+}
+
+#status-splash {
+	max-height: 100%;
+	max-width: 100%;
+	margin: auto;
+}
+
+#status-progress, #status-notice {
+	display: none;
+}
+
+#status-progress {
+	bottom: 10%;
+	width: 50%;
+	margin: 0 auto;
+}
+
+#status-notice {
+	background-color: #5b3943;
+	border-radius: 0.5rem;
+	border: 1px solid #9b3943;
+	color: #e0e0e0;
+	font-family: 'Noto Sans', 'Droid Sans', Arial, sans-serif;
+	line-height: 1.3;
+	margin: 0 2rem;
+	overflow: hidden;
+	padding: 1rem;
+	text-align: center;
+	z-index: 1;
+}
+		</style>
+		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
+<link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
+<link rel="preload" href="index.js?v=llr-secure-context-20260627" as="script" />
+
+	</head>
+	<body>
+		<canvas id="canvas">
+			Your browser does not support the canvas tag.
+		</canvas>
+
+		<noscript>
+			Your browser does not support JavaScript.
+		</noscript>
+
+		<div id="status">
+			<img id="status-splash" src="index.png" alt="">
+			<progress id="status-progress"></progress>
+			<div id="status-notice"></div>
+		</div>
+
+		<script>
+(function () {
+	const pageUrl = new URL(window.location.href);
+	const BUILTIN_PCK_VERSION = '1496118adb893fd0';
+	const BUILTIN_WASM_VERSION = 'fe5cebc590758c10';
+	const selectedPack = pageUrl.searchParams.get('pack') || '';
+	const selectedPackVersion = pageUrl.searchParams.get('packVersion') || '';
+	const nativeFetch = window.fetch.bind(window);
+
+	window.fetch = function (input, init) {
+		const requestUrl = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+		try {
+			const url = new URL(requestUrl, window.location.href);
+			if (/\/index\.wasm$/.test(url.pathname)) {
+				url.searchParams.set('v', BUILTIN_WASM_VERSION);
+				return nativeFetch(url.toString(), {
+					...init,
+					cache: init?.cache || 'default',
+					credentials: init?.credentials || 'same-origin'
+				});
+			}
+			if (/\/index\.pck$/.test(url.pathname)) {
+				if (selectedPack) {
+					url.searchParams.set('pack', selectedPack);
+				}
+				url.searchParams.set('v', [BUILTIN_PCK_VERSION, selectedPackVersion].filter(Boolean).join('.'));
+				const responsePromise = nativeFetch(url.toString(), {
+					...init,
+					cache: init?.cache || 'default',
+					credentials: init?.credentials || 'same-origin'
+				});
+				responsePromise.then((response) => {
+					try {
+						if (window.parent && window.parent !== window) {
+							window.parent.postMessage({
+								type: 'llr-godot-pack-status',
+								pack: selectedPack,
+								patch: response.headers.get('x-llr-extra-patch') || '',
+								packId: response.headers.get('x-llr-pack-id') || ''
+							}, window.location.origin);
+						}
+					} catch {
+						// Parent diagnostics are best-effort only.
+					}
+				});
+				return responsePromise;
+			}
+		} catch {
+			// Fall through to the native fetch below.
+		}
+		return nativeFetch(input, init);
+	};
+}());
+		</script>
+		<script src="index.js?v=llr-secure-context-20260627"></script>
+		<script>
+const GODOT_CONFIG = {"args":["--locale","zh_CN"],"canvasResizePolicy":2,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":9854976,"index.wasm":35376909},"focusCanvas":true,"gdextensionLibs":[],"locale":"zh_CN"};
+if (new URL(window.location.href).searchParams.get('perf') === 'desktop') {
+	GODOT_CONFIG.canvasResizePolicy = 1;
+}
+const GODOT_THREADS_ENABLED = false;
+const engine = new Engine(GODOT_CONFIG);
+
+(function () {
+	const statusOverlay = document.getElementById('status');
+	const statusProgress = document.getElementById('status-progress');
+	const statusNotice = document.getElementById('status-notice');
+
+	let initializing = true;
+	let statusMode = '';
+
+	function setStatusMode(mode) {
+		if (statusMode === mode || !initializing) {
+			return;
+		}
+		if (mode === 'hidden') {
+			statusOverlay.remove();
+			initializing = false;
+			return;
+		}
+		statusOverlay.style.visibility = 'visible';
+		statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
+		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
+		statusMode = mode;
+	}
+
+	function setStatusNotice(text) {
+		while (statusNotice.lastChild) {
+			statusNotice.removeChild(statusNotice.lastChild);
+		}
+		const lines = text.split('\n');
+		lines.forEach((line) => {
+			statusNotice.appendChild(document.createTextNode(line));
+			statusNotice.appendChild(document.createElement('br'));
+		});
+	}
+
+	function displayFailureNotice(err) {
+		console.error(err);
+		if (err instanceof Error) {
+			setStatusNotice(err.message);
+		} else if (typeof err === 'string') {
+			setStatusNotice(err);
+		} else {
+			setStatusNotice('An unknown error occured');
+		}
+		setStatusMode('notice');
+		initializing = false;
+	}
+
+	function formatMissingFeatures(missing) {
+		if (missing.some((feature) => feature.indexOf('WebGL2') !== -1)) {
+			return '错误\n这台设备或浏览器没有开启 WebGL2，当前完整 Godot 版无法运行。\n\n可尝试：\n1. 更新系统 WebView / 浏览器；\n2. 关闭浏览器省电、极速、兼容模式；\n3. 改用 Edge 或 Chrome；\n4. 如果硬件本身不支持 WebGL2，需要单独制作 WebGL1 兼容版。\n\n建议更换 Edge 浏览器，网页游戏环境手机自带浏览器兼容性容易出问题。';
+		}
+		return 'Error\nThe following features required to run Godot projects on the Web are missing:\n' + missing.join('\n');
+	}
+
+	const missing = Engine.getMissingFeatures({
+		threads: GODOT_THREADS_ENABLED,
+	});
+
+	if (missing.length !== 0) {
+		if (window.parent && window.parent !== window) {
+			window.parent.postMessage({ type: 'llr-godot-missing-features', missing }, window.location.origin);
+		}
+		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
+			// There's a chance that installing the service worker would fix the issue
+			Promise.race([
+				navigator.serviceWorker.getRegistration().then((registration) => {
+					if (registration != null) {
+						return Promise.reject(new Error('Service worker already exists.'));
+					}
+					return registration;
+				}).then(() => engine.installServiceWorker()),
+				// For some reason, `getRegistration()` can stall
+				new Promise((resolve) => {
+					setTimeout(() => resolve(), 2000);
+				}),
+			]).catch((err) => {
+				console.error('Error while registering service worker:', err);
+			}).then(() => {
+				window.location.reload();
+			});
+		} else {
+			// Display the message as usual
+			displayFailureNotice(formatMissingFeatures(missing));
+		}
+	} else {
+		setStatusMode('progress');
+		engine.startGame({
+			'onProgress': function (current, total) {
+				if (current > 0 && total > 0) {
+					statusProgress.value = current;
+					statusProgress.max = total;
+				} else {
+					statusProgress.removeAttribute('value');
+					statusProgress.removeAttribute('max');
+				}
+			},
+		}).then(() => {
+			setStatusMode('hidden');
+		}, displayFailureNotice);
+	}
+}());
+		</script>
+	</body>
+</html>

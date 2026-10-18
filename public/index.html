@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN" class="app-booting">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#ffffff" />
+    <title>宽宽的模块化网站</title>
+    <link rel="stylesheet" href="/site-assets/styles-81e871a51f51.css" data-site-styles />
+    <script type="module" data-site-bootstrap>
+  const route = location.pathname.replace(/^\/+|\/+$/g, "").split("/")[0];
+  if (route !== "admin") {
+    const publicRoute = decodeURIComponent(location.pathname).replace(/^\/+|\/+$/g, "").toLowerCase();
+    const configPreload = document.createElement("link");
+    configPreload.rel = "preload";
+    configPreload.as = "fetch";
+    configPreload.crossOrigin = "anonymous";
+    configPreload.href = `/api/site-config${publicRoute ? `?route=${encodeURIComponent(publicRoute)}` : ""}`;
+    document.head.append(configPreload);
+  }
+  void import(route === "admin" ? "/site-assets/admin/app-A22SJKVK.js" : "/site-assets/public/app-QNY4GG3M.js");
+</script>
+    <style>
+      html.app-booting, html.app-booting body { margin: 0; background: #fff; }
+      .boot-shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; }
+      .boot-sidebar { border-right: 1px solid #e6e9ee; padding: 28px 24px; }
+      .boot-brand { width: 140px; height: 38px; border-radius: 8px; background: #edf1f4; }
+      .boot-main { padding: 75px clamp(25px, 4.3vw, 68px); }
+      .boot-title, .boot-line, .boot-card { border-radius: 10px; background: #f3f5f7; animation: boot-pulse 1.5s ease-in-out infinite; }
+      .boot-title { width: min(460px, 76vw); height: 62px; }
+      .boot-line { width: min(400px, 76vw); height: 14px; margin-top: 21px; }
+      .boot-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 17px; margin-top: 80px; }
+      .boot-card { min-height: 220px; }
+      @keyframes boot-pulse { 50% { opacity: .5; } }
+      @media (max-width: 1180px) { .boot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      @media (max-width: 860px) { .boot-shell { display: block; } .boot-sidebar { height: 62px; padding: 13px 20px; border-bottom: 1px solid #e6e9ee; border-right: 0; } .boot-brand { width: 130px; height: 32px; } .boot-main { padding-top: 55px; } }
+      @media (max-width: 620px) { .boot-grid { grid-template-columns: 1fr; margin-top: 50px; } .boot-title { height: 45px; } }
+      @media (prefers-reduced-motion: reduce) { .boot-title, .boot-line, .boot-card { animation: none; } }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="boot-shell" aria-hidden="true">
+        <aside class="boot-sidebar"><div class="boot-brand"></div></aside>
+        <main class="boot-main">
+          <div class="boot-title"></div>
+          <div class="boot-line"></div>
+          <section class="boot-grid">
+            <div class="boot-card"></div>
+            <div class="boot-card"></div>
+          </section>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>
